@@ -1,5 +1,12 @@
+import net.fabricmc.loom.configuration.providers.mappings.IntermediaryMappingsProvider
+import net.fabricmc.loom.util.download.DownloadBuilder
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.util.function.Function
+
+
 plugins {
-	id 'fabric-loom' version '1.3-SNAPSHOT'
+	id 'fabric-loom' version '1.3.local'
 	id 'maven-publish'
 }
 
@@ -11,38 +18,57 @@ base {
 }
 
 repositories {
-	// Add repositories to retrieve artifacts from in here.
-	// You should only use this when depending on other mods because
-	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
-	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
-	// for more information about repositories.
+	mavenLocal()
 }
 
 loom {
-//    splitEnvironmentSourceSets()
-//
-//	mods {
-//		"modid" {
-//			sourceSet sourceSets.main
-//			sourceSet sourceSets.client
-//		}
-//	}
+	//Replace the default loom intermediary provider to the local manual one
+//	var extension = LoomGradleExtension.get(getRootProject());
+	var extension = project.getExtensions().getByName("loom");
+	final var versionPath = extension.files.getUserCache().toPath().resolve(minecraft_version);
+	def intermediaryPath = versionPath.resolve("intermediary-" + minecraft_version + ".tiny")
+	if (!Files.exists(intermediaryPath)){
+		throw new IOException("MITE Intermediay mapping not found")
+	}
+	intermediaryUrl = intermediaryPath.toString();
+	intermediateMappingsProvider = new IntermediaryMappingsProvider(){
+		@Override
+		Property<String> getIntermediaryUrl() {
+			return intermediaryUrl
+		}
 
+		@Override
+		Property<Boolean> getRefreshDeps() {
+			return false as Property<Boolean>
+		}
+
+		@Override
+		Property<String> getMinecraftVersion() {
+			def property = getProject().objects.property(String.class)
+			property.set(minecraft_version)
+			return property;
+		}
+
+		@Override
+		Property<Function<String, DownloadBuilder>> getDownloader() {
+			return null
+		}
+
+		@Override
+		void provide(java.nio.file.Path tinyMappings) throws IOException{
+			Files.copy(intermediaryPath, tinyMappings, StandardCopyOption.REPLACE_EXISTING);
+		}
+	};
 }
 
+
 dependencies {
-	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
-	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	
-	// Uncomment the following line to enable the deprecated Fabric API modules. 
-	// These are included in the Fabric API production distribution and allow you to update your mod to the latest modules at a later more convenient time.
-
-	// modImplementation "net.fabricmc.fabric-api:fabric-api-deprecated:${project.fabric_version}"
+	implementation("net.fabricmc:fabric-loom:1.3.local")
 }
 
 processResources {
@@ -58,9 +84,6 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 java {
-	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
-	// if it is present.
-	// If you remove this line, sources will not be generated.
 	withSourcesJar()
 
 	sourceCompatibility = JavaVersion.VERSION_17
@@ -73,7 +96,6 @@ jar {
 	}
 }
 
-// configure the maven publication
 publishing {
 	publications {
 		mavenJava(MavenPublication) {
@@ -81,11 +103,4 @@ publishing {
 		}
 	}
 
-	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
-	repositories {
-		// Add repositories to publish to here.
-		// Notice: This block does NOT have the same function as the block in the top level.
-		// The repositories here will be used for publishing your artifact, not for
-		// retrieving dependencies.
-	}
 }
